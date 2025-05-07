@@ -44,7 +44,7 @@ function handleImagenSeleccionada(event, index) {
   const file = event.target.files[0]
   if (file) {
    
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 100 * 1024 * 1024) {
       imagenes.value[index].error = 'La imagen es demasiado grande. Máximo 5MB.'
       return
     }
