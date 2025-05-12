@@ -499,7 +499,7 @@ onUnmounted(() => {
   color: #666;
 }
 
-/* Iconos (asegúrate de tener estos iconos o utiliza FontAwesome/Material Icons) */
+
 .icon-bed:before {
   content: "🛏️";
 }
