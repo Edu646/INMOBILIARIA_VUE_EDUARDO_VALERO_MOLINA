@@ -3,15 +3,15 @@ import { ref } from 'vue'
 import { addDoc, collection, deleteDoc, doc } from 'firebase/firestore'
 import { useCollection, useFirestore } from 'vuefire'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 
 const db = useFirestore()
-const storage = getStorage()
 const inmueblesRef = collection(db, "INMUEBLES")
 const listaInmuebles = useCollection(inmueblesRef)
 
+
 const auth = getAuth()
 const currentUser = ref(null)
+
 
 onAuthStateChanged(auth, (user) => {
   currentUser.value = user
@@ -30,28 +30,28 @@ const buscandoDireccion = ref(false)
 const mensajeGeocoding = ref('') 
 const errorGuardar = ref('') 
 const imagenes = ref([
-  { file: null, preview: '', error: '', progress: 0 },
-  { file: null, preview: '', error: '', progress: 0 },
-  { file: null, preview: '', error: '', progress: 0 },
-  { file: null, preview: '', error: '', progress: 0 }
+  { url: '', file: null, preview: '', error: '' },
+  { url: '', file: null, preview: '', error: '' },
+  { url: '', file: null, preview: '', error: '' },
+  { url: '', file: null, preview: '', error: '' }
 ])
 const procesandoImagenes = ref(false)
 const imagenActiva = ref(0)
 const latitud = ref(null)
 const longitud = ref(null)
-const uploadProgress = ref(0)
 
 function handleImagenSeleccionada(event, index) {
   const file = event.target.files[0]
   if (file) {
-    // Verificar tamaño (aumentado a 20MB para compatibilidad)
-    if (file.size > 20 * 1024 * 1024) {
+   
+    if (file.size > 20 * 1024 * 1024) { // Aumentado a 20MB (desde 5MB)
       imagenes.value[index].error = 'La imagen es demasiado grande. Máximo 20MB.'
       return
     }
     
     imagenes.value[index].file = file
     imagenes.value[index].error = ''
+    imagenes.value[index].url = '' // Clear URL if file is selected
     
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -59,6 +59,28 @@ function handleImagenSeleccionada(event, index) {
     }
     reader.readAsDataURL(file)
   }
+}
+
+function convertirImagenABase64(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve(null)
+      return
+    }
+    
+    try {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        resolve(e.target.result)
+      }
+      reader.onerror = (e) => {
+        reject(e)
+      }
+      reader.readAsDataURL(file)
+    } catch (error) {
+      reject(error)
+    }
+  })
 }
 
 function validarURL(url) {
@@ -148,11 +170,12 @@ function validarInmueble() {
     errores.push("Las coordenadas de ubicación son obligatorias");
   }
   
+
   if (!currentUser.value) {
     errores.push("Debe iniciar sesión para añadir un inmueble");
   }
 
-  const tieneImagenes = imagenes.value.some(img => img.file);
+  const tieneImagenes = imagenes.value.some(img => img.file || img.url);
   if (!tieneImagenes) {
     errores.push("Debe añadir al menos una imagen");
   }
@@ -160,39 +183,7 @@ function validarInmueble() {
   return errores;
 }
 
-async function subirImagenAStorage(file, userId) {
-  if (!file) return null;
-  
-  try {
-    // Generar un nombre único para el archivo
-    const timestamp = new Date().getTime();
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `inmuebles/${userId}/${timestamp}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
-    
-    // Referencia al archivo en Firebase Storage
-    const imgRef = storageRef(storage, fileName);
-    
-    // Subir el archivo
-    const snapshot = await uploadBytes(imgRef, file);
-    console.log("Imagen subida con éxito:", snapshot.metadata.name);
-    
-    // Obtener la URL de descarga
-    const downloadURL = await getDownloadURL(imgRef);
-    console.log("URL de descarga:", downloadURL);
-    
-    // Devolver la URL de descarga y la referencia para posible eliminación futura
-    return {
-      url: downloadURL,
-      path: fileName
-    };
-    
-  } catch (error) {
-    console.error("Error al subir imagen a Firebase Storage:", error);
-    throw error;
-  }
-}
-
-async function nuevo_inmueble() {
+function nuevo_inmueble() {
   errorGuardar.value = '';
   
   const errores = validarInmueble();
@@ -203,150 +194,112 @@ async function nuevo_inmueble() {
   
   if (procesandoImagenes.value) return;
   procesandoImagenes.value = true;
-  uploadProgress.value = 0;
   
-  try {
-    // Array para almacenar las promesas de carga de imágenes
-    const promesasSubida = [];
-    let imagenesConArchivo = 0;
+  const promesasImagenes = [];
+  
+  for (let i = 0; i < imagenes.value.length; i++) {
+    const imagen = imagenes.value[i];
     
-    // Contar imágenes con archivo para calcular progreso
-    imagenes.value.forEach(img => {
-      if (img.file) imagenesConArchivo++;
-    });
-    
-    // Si no hay imágenes, salir
-    if (imagenesConArchivo === 0) {
-      throw new Error("Debe subir al menos una imagen");
+    if (imagen.file) {
+      promesasImagenes.push(convertirImagenABase64(imagen.file));
+    } else if (imagen.url && validarURL(imagen.url)) {
+      promesasImagenes.push(Promise.resolve(imagen.url));
+    } else {
+      promesasImagenes.push(Promise.resolve(null));
     }
-    
-    // Preparar las promesas de subida para cada imagen
-    const imagenesSubidas = [];
-    let imagenesCompletadas = 0;
-    
-    for (let i = 0; i < imagenes.value.length; i++) {
-      const imagen = imagenes.value[i];
-      
-      if (imagen.file) {
-        const promesa = subirImagenAStorage(imagen.file, currentUser.value.uid)
-          .then(resultado => {
-            imagenesCompletadas++;
-            uploadProgress.value = Math.round((imagenesCompletadas / imagenesConArchivo) * 100);
-            return resultado;
-          });
-        
-        promesasSubida.push(promesa);
-      }
-    }
-    
-    // Esperar a que todas las imágenes se suban
-    const resultadosImagenes = await Promise.all(promesasSubida);
-    
-    // Filtrar resultados nulos
-    const imagenesGuardar = resultadosImagenes.filter(img => img !== null);
-    
-    if (imagenesGuardar.length === 0) {
-      throw new Error("No se pudieron subir las imágenes");
-    }
-    
-    // Crear el objeto inmueble con las URLs de las imágenes
-    const n_inmueble = {
-      name: nuevoInmuebleTexto.value,
-      rent: esRent.value,
-      sell: !esRent.value,
-      Bedroom: Number(Bedroom.value),
-      Bathroom: Number(Bathroom.value),
-      Parking_Spot: esparking.value,
-      Regular_Price: Number(precio_inicial.value),
-      offer: mostrarInput.value,
-      Discounted_Price: mostrarInput.value ? Number(precio_a_descontar.value) : 0,
-      imageURLs: imagenesGuardar.map(img => img.url),
-      imagePaths: imagenesGuardar.map(img => img.path), // Guardar las rutas para posible eliminación futura
-      direccion: direccion.value,
-      location: {
-        lat: Number(latitud.value),
-        lng: Number(longitud.value)
-      },
-      timestamp: new Date().toISOString(),
-      userId: currentUser.value.uid,
-      userEmail: currentUser.value.email
-    };
-
-    console.log("Guardando inmueble:", n_inmueble);
-    
-    // Guardar el inmueble en Firestore
-    const docRef = await addDoc(inmueblesRef, n_inmueble);
-    console.log("Documento guardado con ID:", docRef.id);
-    
-    // Reiniciar formulario
-    nuevoInmuebleTexto.value = ''; 
-    precio_inicial.value = '';
-    precio_a_descontar.value = '';
-    mostrarInput.value = false;
-    esRent.value = true;
-    esparking.value = false;
-    Bedroom.value = '';
-    Bathroom.value = '';
-    direccion.value = '';
-    latitud.value = null;
-    longitud.value = null;
-    mensajeGeocoding.value = '';
-    imagenes.value = imagenes.value.map(() => ({ 
-      file: null, 
-      preview: '', 
-      error: '',
-      progress: 0
-    }));
-    imagenActiva.value = 0;
-    
-    errorGuardar.value = '¡Inmueble guardado correctamente!';
-    setTimeout(() => {
-      errorGuardar.value = '';
-    }, 3000);
-    
-  } catch (error) {
-    console.error("Error al guardar el inmueble:", error);
-    errorGuardar.value = `Error al guardar: ${error.message}`;
-  } finally {
-    procesandoImagenes.value = false;
-    uploadProgress.value = 0;
   }
+  
+  Promise.all(promesasImagenes)
+    .then(imagenesResueltas => {
+     
+      const imagenesGuardar = imagenesResueltas.filter(img => img !== null);
+    
+      if (imagenesGuardar.length === 0) {
+        throw new Error("Debe proporcionar al menos una imagen válida");
+      }
+      
+
+      if (!currentUser.value) {
+        throw new Error("No hay un usuario autenticado");
+      }
+      
+      const n_inmueble = {
+        name: nuevoInmuebleTexto.value,
+        rent: esRent.value,
+        sell: !esRent.value,
+        Bedroom: Number(Bedroom.value),
+        Bathroom: Number(Bathroom.value),
+        Parking_Spot: esparking.value,
+        Regular_Price: Number(precio_inicial.value),
+        offer: mostrarInput.value,
+        Discounted_Price: mostrarInput.value ? Number(precio_a_descontar.value) : 0,
+        imageURLs: imagenesGuardar,
+        direccion: direccion.value,
+        location: {
+          lat: Number(latitud.value),
+          lng: Number(longitud.value)
+        },
+        timestamp: new Date().toISOString(),
+        userId: currentUser.value.uid,
+        userEmail: currentUser.value.email
+      };
+
+      console.log("Guardando inmueble:", n_inmueble);
+      
+      return addDoc(inmueblesRef, n_inmueble);
+    })
+    .then(docRef => {
+      console.log("Documento guardado con ID:", docRef.id);
+     
+      nuevoInmuebleTexto.value = ''; 
+      precio_inicial.value = '';
+      precio_a_descontar.value = '';
+      mostrarInput.value = false;
+      esRent.value = true;
+      esparking.value = false;
+      Bedroom.value = '';
+      Bathroom.value = '';
+      direccion.value = '';
+      latitud.value = null;
+      longitud.value = null;
+      mensajeGeocoding.value = '';
+      imagenes.value = imagenes.value.map(() => ({ 
+        url: '', 
+        file: null, 
+        preview: '', 
+        error: '' 
+      }));
+      imagenActiva.value = 0;
+      
+      errorGuardar.value = '¡Inmueble guardado correctamente!';
+      setTimeout(() => {
+        errorGuardar.value = '';
+      }, 3000);
+    })
+    .catch(error => {
+      console.error("Error al guardar el inmueble:", error);
+      errorGuardar.value = `Error al guardar: ${error.message}`;
+    })
+    .finally(() => {
+      procesandoImagenes.value = false;
+    });
 }
 
-async function eliminar_inmueble(id) {
+function eliminar_inmueble(id) {
   if (!currentUser.value) {
     console.error("No hay usuario autenticado para eliminar inmuebles");
     return;
   }
   
-  try {
-    // Primero, obtener el documento para conseguir las rutas de las imágenes
-    const inmuebleDoc = doc(db, "INMUEBLES", id);
-    const inmuebleData = listaInmuebles.value.find(item => item.id === id);
-    
-    if (inmuebleData && inmuebleData.imagePaths && inmuebleData.imagePaths.length > 0) {
-      // Eliminar cada imagen de Storage
-      const promesasEliminacion = inmuebleData.imagePaths.map(path => {
-        if (path) {
-          const imgRef = storageRef(storage, path);
-          return deleteObject(imgRef).catch(error => {
-            console.warn(`No se pudo eliminar la imagen ${path}:`, error);
-          });
-        }
-        return Promise.resolve();
-      });
-      
-      // Esperar a que se eliminen todas las imágenes
-      await Promise.all(promesasEliminacion);
-    }
-    
-    // Finalmente, eliminar el documento de Firestore
-    await deleteDoc(inmuebleDoc);
-    console.log("Inmueble y sus imágenes eliminados con éxito");
-    
-  } catch (error) {
-    console.error("Error al eliminar el inmueble:", error);
-  }
+  const inmuebleRef = doc(db, "INMUEBLES", id);
+  
+  deleteDoc(inmuebleRef)
+    .then(() => {
+      console.log("Inmueble eliminado con éxito");
+    })
+    .catch((error) => {
+      console.error("Error al eliminar el inmueble:", error);
+    });
 }
 </script>
 
@@ -435,15 +388,8 @@ async function eliminar_inmueble(id) {
 
     <div class="imagen-upload">
       <h3>Imágenes del inmueble (máximo 4)</h3>
-      <p class="note">Nota: Las imágenes se subirán a Firebase Storage. Recomendado: imágenes de hasta 5MB para mejor rendimiento.</p>
-      
-      <!-- Progreso de subida global -->
-      <div v-if="procesandoImagenes && uploadProgress > 0" class="progreso-container">
-        <div class="progreso-text">Subiendo imágenes: {{ uploadProgress }}%</div>
-        <div class="progreso-barra">
-          <div class="progreso-completado" :style="{ width: uploadProgress + '%' }"></div>
-        </div>
-      </div>
+      <p class="note">Nota: Las imágenes se guardarán como base64 directamente en la base de datos. 
+        Por favor, use imágenes pequeñas (máx 5MB) para evitar problemas de rendimiento.</p>
       
       <div class="selector-imagenes">
         <button 
@@ -459,7 +405,7 @@ async function eliminar_inmueble(id) {
       
       <div class="imagen-panel">
         <div class="upload-option">
-          <h4>Seleccionar imagen del dispositivo</h4>
+          <h4>Opción 1: Seleccionar imagen del dispositivo</h4>
           <input 
             type="file" 
             accept="image/*" 
@@ -470,8 +416,20 @@ async function eliminar_inmueble(id) {
           <p class="hint">Recomendado: JPG/PNG, máx 5MB</p>
         </div>
         
-        <div v-if="imagenes[imagenActiva].preview" class="imagen-preview">
-          <img :src="imagenes[imagenActiva].preview" alt="Vista previa" />
+        <div class="upload-option">
+          <h4>Opción 2: Ingresar URL de imagen</h4>
+          <input 
+            v-model="imagenes[imagenActiva].url" 
+            type="text" 
+            placeholder="https://ejemplo.com/imagen.jpg" 
+            class="input"
+            :disabled="imagenes[imagenActiva].file !== null"
+          />
+          <p class="hint">Si ingresa una URL, asegúrese de que sea accesible públicamente</p>
+        </div>
+        
+        <div v-if="imagenes[imagenActiva].preview || imagenes[imagenActiva].url" class="imagen-preview">
+          <img :src="imagenes[imagenActiva].preview || imagenes[imagenActiva].url" alt="Vista previa" />
         </div>
         
         <p v-if="imagenes[imagenActiva].error" class="error-mensaje">{{ imagenes[imagenActiva].error }}</p>
@@ -482,20 +440,21 @@ async function eliminar_inmueble(id) {
           v-for="(img, index) in imagenes" 
           :key="index" 
           class="miniatura" 
-          :class="{ 'empty': !img.preview }"
+          :class="{ 'empty': !img.preview && !img.url }"
           @click="imagenActiva = index"
         >
-          <img v-if="img.preview" :src="img.preview" alt="Miniatura" />
+          <img v-if="img.preview || img.url" :src="img.preview || img.url" alt="Miniatura" />
           <span v-else>Sin imagen</span>
         </div>
       </div>
     </div>
 
     <button @click="nuevo_inmueble" class="agregar" :disabled="procesandoImagenes || !currentUser">
-      {{ procesandoImagenes ? 'Subiendo imágenes...' : 'Añadir Inmueble' }}
+      {{ procesandoImagenes ? 'Procesando...' : 'Añadir Inmueble' }}
     </button>
   </div>
 </template>
+
 
 <style>
 /* Base Styles */
