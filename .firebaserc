@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "vue-examen-52ab6"
-  }
+    "default": "vue-examen-52ab6",
+    "gsutil cors set cors.json gs://vue-examen-52ab6.appspot.com": "vue-examen-52ab6"
+  },
+  "targets": {},
+  "etags": {}
 }
