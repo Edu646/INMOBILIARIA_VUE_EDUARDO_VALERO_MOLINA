@@ -1,74 +1,158 @@
 <script setup>
-import { ref } from 'vue';
-import { addDoc, collection, deleteDoc, doc, getDoc } from 'firebase/firestore';
-import { useCollection, useFirestore } from 'vuefire';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref } from 'vue'
+import { addDoc, collection, deleteDoc, doc } from 'firebase/firestore'
+import { useCollection, useFirestore } from 'vuefire'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
 
-const db = useFirestore();
-const inmueblesRef = collection(db, "INMUEBLES");
-const listaInmuebles = useCollection(inmueblesRef);
+const db = useFirestore()
+const inmueblesRef = collection(db, "INMUEBLES")
+const listaInmuebles = useCollection(inmueblesRef)
 
-const auth = getAuth();
-const currentUser = ref(null);
 
-const storage = getStorage();
+const auth = getAuth()
+const currentUser = ref(null)
+
 
 onAuthStateChanged(auth, (user) => {
-  currentUser.value = user;
-});
+  currentUser.value = user
+})
 
-const nuevoInmuebleTexto = ref('');
-const esRent = ref(true);
-const esparking = ref(false);
-const precio_inicial = ref('');
-const mostrarInput = ref(false);
-const precio_a_descontar = ref('');
-const Bedroom = ref('');
-const Bathroom = ref('');
-const direccion = ref('');
-const buscandoDireccion = ref(false);
-const mensajeGeocoding = ref('');
-const errorGuardar = ref('');
+const nuevoInmuebleTexto = ref('')
+const esRent = ref(true) 
+const esparking = ref(false)
+const precio_inicial = ref('')
+const mostrarInput = ref(false)
+const precio_a_descontar = ref('')
+const Bedroom = ref('')
+const Bathroom = ref('')
+const direccion = ref('') 
+const buscandoDireccion = ref(false) 
+const mensajeGeocoding = ref('') 
+const errorGuardar = ref('') 
 const imagenes = ref([
   { url: '', file: null, preview: '', error: '' },
   { url: '', file: null, preview: '', error: '' },
   { url: '', file: null, preview: '', error: '' },
   { url: '', file: null, preview: '', error: '' }
-]);
-const procesandoImagenes = ref(false);
-const imagenActiva = ref(0);
-const latitud = ref(null);
-const longitud = ref(null);
+])
+const procesandoImagenes = ref(false)
+const imagenActiva = ref(0)
+const latitud = ref(null)
+const longitud = ref(null)
 
+// Reemplaza la función handleImagenSeleccionada con esta versión mejorada
 function handleImagenSeleccionada(event, index) {
-  const file = event.target.files[0];
+  const file = event.target.files[0]
   if (file) {
-
-    if (file.size > 5 * 1024 * 1024) { // Máximo 5MB
-      imagenes.value[index].error = 'La imagen es demasiado grande. Máximo 5MB.';
-      return;
+    // Aumentamos el límite a 20MB
+    if (file.size > 20 * 1024 * 1024) {
+      imagenes.value[index].error = 'La imagen es demasiado grande. Máximo 20MB.'
+      return
     }
-
-    imagenes.value[index].file = file;
-    imagenes.value[index].error = '';
-    imagenes.value[index].url = ''; // Clear URL if file is selected
-
-    const reader = new FileReader();
+    
+    imagenes.value[index].file = file
+    imagenes.value[index].error = ''
+    imagenes.value[index].url = '' // Clear URL if file is selected
+    
+    const reader = new FileReader()
     reader.onload = (e) => {
-      imagenes.value[index].preview = e.target.result;
-    };
-    reader.readAsDataURL(file);
+      imagenes.value[index].preview = e.target.result
+    }
+    reader.readAsDataURL(file)
   }
 }
 
+// Reemplaza la función convertirImagenABase64 con esta versión que incluye compresión
+function convertirImagenABase64(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve(null)
+      return
+    }
+    
+    try {
+      // Para imágenes que no son JPG o PNG, usamos el método anterior
+      if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          resolve(e.target.result)
+        }
+        reader.onerror = (e) => {
+          reject(e)
+        }
+        reader.readAsDataURL(file)
+        return
+      }
+      
+      // Para JPG y PNG, aplicamos compresión
+      const reader = new FileReader()
+      reader.onload = function(e) {
+        const img = new Image()
+        img.onload = function() {
+          // Creamos un canvas para la compresión
+          const canvas = document.createElement('canvas')
+          
+          // Calculamos dimensiones manteniendo la proporción
+          let width = img.width
+          let height = img.height
+          
+          // Si la imagen es muy grande, la redimensionamos
+          const MAX_WIDTH = 1600
+          const MAX_HEIGHT = 1600
+          
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width
+              width = MAX_WIDTH
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height
+              height = MAX_HEIGHT
+            }
+          }
+          
+          // Establecemos las dimensiones del canvas
+          canvas.width = width
+          canvas.height = height
+          
+          // Dibujamos la imagen en el canvas con las nuevas dimensiones
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0, width, height)
+          
+          // Convertimos el canvas a base64 con compresión
+          // Para JPG usamos calidad 0.7, para PNG usamos 0.8
+          const quality = file.type === 'image/png' ? 0.8 : 0.7
+          const dataUrl = canvas.toDataURL(file.type, quality)
+          
+          resolve(dataUrl)
+        }
+        
+        img.onerror = function() {
+          reject(new Error('Error al cargar la imagen para compresión'))
+        }
+        
+        img.src = e.target.result
+      }
+      
+      reader.onerror = function(e) {
+        reject(e)
+      }
+      
+      reader.readAsDataURL(file)
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
 function validarURL(url) {
-  if (!url) return true;
+  if (!url) return true
   try {
-    new URL(url);
-    return true;
+    new URL(url)
+    return true
   } catch (e) {
-    return false;
+    return false
   }
 }
 
@@ -96,59 +180,59 @@ function buscarCoordenadas() {
     mensajeGeocoding.value = "Por favor ingresa una dirección";
     return;
   }
-
+  
   buscandoDireccion.value = true;
   mensajeGeocoding.value = "Buscando coordenadas...";
-
+  
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(direccion.value)}`;
-
+  
   fetch(url, {
     headers: {
       'Accept': 'application/json',
       'User-Agent': 'InmueblesApp'
     }
   })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Error en la respuesta del servidor');
-      }
-      return response.json();
-    })
-    .then(data => {
-      if (data && data.length > 0) {
-        latitud.value = parseFloat(data[0].lat);
-        longitud.value = parseFloat(data[0].lon);
-        mensajeGeocoding.value = `Ubicación encontrada: ${data[0].display_name}`;
-        console.log("Coordenadas obtenidas:", latitud.value, longitud.value);
-      } else {
-        mensajeGeocoding.value = "No se encontraron resultados para esta dirección";
-      }
-    })
-    .catch(error => {
-      console.error("Error al geocodificar:", error);
-      mensajeGeocoding.value = `Error al buscar la dirección: ${error.message}`;
-    })
-    .finally(() => {
-      buscandoDireccion.value = false;
-    });
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Error en la respuesta del servidor');
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data && data.length > 0) {
+      latitud.value = parseFloat(data[0].lat);
+      longitud.value = parseFloat(data[0].lon);
+      mensajeGeocoding.value = `Ubicación encontrada: ${data[0].display_name}`;
+      console.log("Coordenadas obtenidas:", latitud.value, longitud.value);
+    } else {
+      mensajeGeocoding.value = "No se encontraron resultados para esta dirección";
+    }
+  })
+  .catch(error => {
+    console.error("Error al geocodificar:", error);
+    mensajeGeocoding.value = `Error al buscar la dirección: ${error.message}`;
+  })
+  .finally(() => {
+    buscandoDireccion.value = false;
+  });
 }
 
 function validarInmueble() {
   const errores = [];
-
+  
   if (!nuevoInmuebleTexto.value) errores.push("Nombre del inmueble es obligatorio");
   if (!precio_inicial.value) errores.push("Precio es obligatorio");
   if (!Bedroom.value) errores.push("Número de dormitorios es obligatorio");
   if (!Bathroom.value) errores.push("Número de baños es obligatorio");
-
+  
   if (mostrarInput.value && !precio_a_descontar.value) {
     errores.push("Si hay oferta, el precio de descuento es obligatorio");
   }
-
+  
   if (!latitud.value || !longitud.value) {
     errores.push("Las coordenadas de ubicación son obligatorias");
   }
-
+  
 
   if (!currentUser.value) {
     errores.push("Debe iniciar sesión para añadir un inmueble");
@@ -158,72 +242,50 @@ function validarInmueble() {
   if (!tieneImagenes) {
     errores.push("Debe añadir al menos una imagen");
   }
-
+  
   return errores;
 }
 
-async function nuevo_inmueble() {
+function nuevo_inmueble() {
   errorGuardar.value = '';
-
+  
   const errores = validarInmueble();
   if (errores.length > 0) {
     errorGuardar.value = errores.join(". ");
     return;
   }
-
+  
   if (procesandoImagenes.value) return;
   procesandoImagenes.value = true;
-
-  const uploadPromises = [];
-  const imageUrls = [];
-
+  
+  const promesasImagenes = [];
+  
   for (let i = 0; i < imagenes.value.length; i++) {
     const imagen = imagenes.value[i];
-
+    
     if (imagen.file) {
-      const storageReference = storageRef(storage, `inmuebles/${currentUser.value.uid}/${Date.now()}-${imagen.file.name}`);
-      const uploadTask = uploadBytesResumable(storageReference, imagen.file);
-
-      const uploadPromise = new Promise((resolve, reject) => {
-        uploadTask.on('state_changed',
-          (snapshot) => {
-            // Puedes agregar lógica para mostrar el progreso de la carga si lo deseas
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log('Subida en progreso:', progress + '%');
-          },
-          (error) => {
-            console.error("Error al subir la imagen:", error);
-            reject(error);
-          },
-          async () => {
-            // Descarga la URL después de la carga exitosa
-            try {
-              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-              imageUrls.push(downloadURL);
-              resolve(downloadURL);
-            } catch (error) {
-              console.error("Error al obtener la URL de descarga:", error);
-              reject(error);
-            }
-          }
-        );
-      });
-      uploadPromises.push(uploadPromise);
+      promesasImagenes.push(convertirImagenABase64(imagen.file));
     } else if (imagen.url && validarURL(imagen.url)) {
-      imageUrls.push(imagen.url);
+      promesasImagenes.push(Promise.resolve(imagen.url));
+    } else {
+      promesasImagenes.push(Promise.resolve(null));
     }
   }
-
-  Promise.all(uploadPromises)
-    .then(() => {
-      if (imageUrls.length === 0) {
+  
+  Promise.all(promesasImagenes)
+    .then(imagenesResueltas => {
+     
+      const imagenesGuardar = imagenesResueltas.filter(img => img !== null);
+    
+      if (imagenesGuardar.length === 0) {
         throw new Error("Debe proporcionar al menos una imagen válida");
       }
+      
 
       if (!currentUser.value) {
         throw new Error("No hay un usuario autenticado");
       }
-
+      
       const n_inmueble = {
         name: nuevoInmuebleTexto.value,
         rent: esRent.value,
@@ -234,7 +296,7 @@ async function nuevo_inmueble() {
         Regular_Price: Number(precio_inicial.value),
         offer: mostrarInput.value,
         Discounted_Price: mostrarInput.value ? Number(precio_a_descontar.value) : 0,
-        imageURLs: imageUrls, // Guardamos las URLs de descarga
+        imageURLs: imagenesGuardar,
         direccion: direccion.value,
         location: {
           lat: Number(latitud.value),
@@ -246,13 +308,13 @@ async function nuevo_inmueble() {
       };
 
       console.log("Guardando inmueble:", n_inmueble);
-
+      
       return addDoc(inmueblesRef, n_inmueble);
     })
     .then(docRef => {
       console.log("Documento guardado con ID:", docRef.id);
-
-      nuevoInmuebleTexto.value = '';
+     
+      nuevoInmuebleTexto.value = ''; 
       precio_inicial.value = '';
       precio_a_descontar.value = '';
       mostrarInput.value = false;
@@ -264,14 +326,14 @@ async function nuevo_inmueble() {
       latitud.value = null;
       longitud.value = null;
       mensajeGeocoding.value = '';
-      imagenes.value = imagenes.value.map(() => ({
-        url: '',
-        file: null,
-        preview: '',
-        error: ''
+      imagenes.value = imagenes.value.map(() => ({ 
+        url: '', 
+        file: null, 
+        preview: '', 
+        error: '' 
       }));
       imagenActiva.value = 0;
-
+      
       errorGuardar.value = '¡Inmueble guardado correctamente!';
       setTimeout(() => {
         errorGuardar.value = '';
@@ -286,47 +348,30 @@ async function nuevo_inmueble() {
     });
 }
 
-async function eliminar_inmueble(id) {
+function eliminar_inmueble(id) {
   if (!currentUser.value) {
     console.error("No hay usuario autenticado para eliminar inmuebles");
     return;
   }
-
+  
   const inmuebleRef = doc(db, "INMUEBLES", id);
-
-  try {
-    const docSnap = await getDoc(inmuebleRef);
-    if (docSnap.exists() && docSnap.data().imageURLs) {
-      const imageUrls = docSnap.data().imageURLs;
-      // Eliminar las imágenes de Storage
-      const deletePromises = imageUrls.map(async (url) => {
-        try {
-          const storageReference = storageRef(storage, url);
-          await deleteObject(storageReference);
-          console.log(`Imagen eliminada: ${url}`);
-        } catch (error) {
-          console.error(`Error al eliminar la imagen ${url}:`, error);
-          // No rechazar la promesa para no detener la eliminación de otros archivos
-        }
-      });
-      await Promise.all(deletePromises);
-    }
-
-    // Eliminar el documento de Firestore después de (intentar) eliminar las imágenes
-    await deleteDoc(inmuebleRef);
-    console.log("Inmueble eliminado con éxito");
-
-  } catch (error) {
-    console.error("Error al eliminar el inmueble:", error);
-  }
+  
+  deleteDoc(inmuebleRef)
+    .then(() => {
+      console.log("Inmueble eliminado con éxito");
+    })
+    .catch((error) => {
+      console.error("Error al eliminar el inmueble:", error);
+    });
 }
 </script>
 
 <template>
   <div class="container">
-
+   
     <h2>Añadir nuevo inmueble</h2>
-
+    
+    <!-- Mensaje de usuario conectado -->
     <div v-if="currentUser" class="user-info success-mensaje">
       <p>Usuario conectado: {{ currentUser.email }}</p>
     </div>
@@ -334,31 +379,33 @@ async function eliminar_inmueble(id) {
       <p>No hay usuario conectado. Por favor, inicie sesión para añadir inmuebles.</p>
     </div>
 
+    <!-- Mensaje de error/éxito al guardar -->
     <div v-if="errorGuardar" :class="{ 'error-mensaje': errorGuardar.includes('Error'), 'success-mensaje': !errorGuardar.includes('Error') }" class="mensaje-guardar">
       {{ errorGuardar }}
     </div>
 
     <input v-model="nuevoInmuebleTexto" type="text" placeholder="Nombre del inmueble" class="input" required />
-
+    
+    <!-- Sección de ubicación -->
     <div class="ubicacion-container">
       <h3>Ubicación del inmueble</h3>
-
+      
       <div class="input-group">
         <label>Dirección:</label>
         <input v-model="direccion" type="text" placeholder="Ej. Calle Gran Vía 28, Madrid" class="input" />
       </div>
-
+      
       <div class="buttons-group">
         <button @click="buscarCoordenadas" class="ubicacion-btn" :disabled="buscandoDireccion">
           {{ buscandoDireccion ? 'Buscando...' : 'Buscar coordenadas' }}
         </button>
         <button @click="obtenerCoordenadas" class="ubicacion-btn">Usar mi ubicación actual</button>
       </div>
-
+      
       <p v-if="mensajeGeocoding" :class="{ 'error-mensaje': mensajeGeocoding.includes('Error') || mensajeGeocoding.includes('No se'), 'success-mensaje': !mensajeGeocoding.includes('Error') && !mensajeGeocoding.includes('No se') }">
         {{ mensajeGeocoding }}
       </p>
-
+      
       <div v-if="latitud && longitud" class="ubicacion-info">
         <p>Coordenadas obtenidas:</p>
         <p>Latitud: {{ latitud }}</p>
@@ -381,7 +428,7 @@ async function eliminar_inmueble(id) {
       <label>Dormitorios:</label>
       <input v-model="Bedroom" type="number" min="0" placeholder="Número de dormitorios" class="input" required />
     </div>
-
+    
     <div class="input-group">
       <label>Baños:</label>
       <input v-model="Bathroom" type="number" min="0" placeholder="Número de baños" class="input" required />
@@ -404,58 +451,58 @@ async function eliminar_inmueble(id) {
 
     <div class="imagen-upload">
       <h3>Imágenes del inmueble (máximo 4)</h3>
-      <p class="note">Nota: Las imágenes se subirán a Firebase Storage y se guardarán las URLs en la base de datos.
-        Por favor, use imágenes pequeñas (máx 5MB) para una carga más rápida.</p>
-
+      <p class="note">Nota: Las imágenes se guardarán como base64 directamente en la base de datos. 
+        Por favor, use imágenes pequeñas (máx 5MB) para evitar problemas de rendimiento.</p>
+      
       <div class="selector-imagenes">
-        <button
-          v-for="(img, index) in imagenes"
-          :key="index"
-          @click="imagenActiva = index"
+        <button 
+          v-for="(img, index) in imagenes" 
+          :key="index" 
+          @click="imagenActiva = index" 
           :class="{ 'activo': imagenActiva === index }"
           class="selector-btn"
         >
           Imagen {{ index + 1 }}
         </button>
       </div>
-
+      
       <div class="imagen-panel">
         <div class="upload-option">
           <h4>Opción 1: Seleccionar imagen del dispositivo</h4>
-          <input
-            type="file"
-            accept="image/*"
-            @change="(e) => handleImagenSeleccionada(e, imagenActiva)"
+          <input 
+            type="file" 
+            accept="image/*" 
+            @change="(e) => handleImagenSeleccionada(e, imagenActiva)" 
             class="input-file"
             :disabled="procesandoImagenes"
           />
           <p class="hint">Recomendado: JPG/PNG, máx 5MB</p>
         </div>
-
+        
         <div class="upload-option">
           <h4>Opción 2: Ingresar URL de imagen</h4>
-          <input
-            v-model="imagenes[imagenActiva].url"
-            type="text"
-            placeholder="https://ejemplo.com/imagen.jpg"
+          <input 
+            v-model="imagenes[imagenActiva].url" 
+            type="text" 
+            placeholder="https://ejemplo.com/imagen.jpg" 
             class="input"
             :disabled="imagenes[imagenActiva].file !== null"
           />
           <p class="hint">Si ingresa una URL, asegúrese de que sea accesible públicamente</p>
         </div>
-
+        
         <div v-if="imagenes[imagenActiva].preview || imagenes[imagenActiva].url" class="imagen-preview">
           <img :src="imagenes[imagenActiva].preview || imagenes[imagenActiva].url" alt="Vista previa" />
         </div>
-
+        
         <p v-if="imagenes[imagenActiva].error" class="error-mensaje">{{ imagenes[imagenActiva].error }}</p>
       </div>
-
+      
       <div class="vista-miniaturas">
-        <div
-          v-for="(img, index) in imagenes"
-          :key="index"
-          class="miniatura"
+        <div 
+          v-for="(img, index) in imagenes" 
+          :key="index" 
+          class="miniatura" 
           :class="{ 'empty': !img.preview && !img.url }"
           @click="imagenActiva = index"
         >
@@ -866,24 +913,24 @@ button {
     padding: 1rem;
     margin: 1rem;
   }
-
+  
   .boton-group {
     flex-direction: column;
     align-items: stretch;
   }
-
+  
   .boton-group p {
     margin-bottom: 0.5rem;
   }
-
+  
   .buttons-group {
     flex-direction: column;
   }
-
+  
   .selector-imagenes {
     flex-wrap: wrap;
   }
-
+  
   .selector-btn {
     flex: 1;
   }
