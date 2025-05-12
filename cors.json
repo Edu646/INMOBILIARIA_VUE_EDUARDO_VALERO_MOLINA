@@ -1,8 +1,9 @@
 [
     {
       "origin": ["https://inmobiliaria-vue-eduardo-valero-molina.vercel.app"],
-      "method": ["PUT", "POST", "GET", "DELETE", "OPTIONS"],
-      "responseHeader": ["Content-Type", "Authorization"],
-      "maxAgeSeconds": 3600
+      "method": ["GET"],
+      "maxAgeSeconds": 3600,
+      "responseHeader": ["Content-Type"]
     }
   ]
+  
