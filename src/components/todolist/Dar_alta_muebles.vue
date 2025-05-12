@@ -39,12 +39,11 @@ const procesandoImagenes = ref(false)
 const imagenActiva = ref(0)
 const latitud = ref(null)
 const longitud = ref(null)
-
-// Reemplaza la función handleImagenSeleccionada con esta versión mejorada
+// Esta funcion lo que hace es que puedas seleccionar varias imagenes para poder subirlas 
 function handleImagenSeleccionada(event, index) {
   const file = event.target.files[0]
   if (file) {
-    // Aumentamos el límite a 20MB
+    // límite a 20MB
     if (file.size > 20 * 1024 * 1024) {
       imagenes.value[index].error = 'La imagen es demasiado grande. Máximo 20MB.'
       return
@@ -52,7 +51,7 @@ function handleImagenSeleccionada(event, index) {
     
     imagenes.value[index].file = file
     imagenes.value[index].error = ''
-    imagenes.value[index].url = '' // Clear URL if file is selected
+    imagenes.value[index].url = '' // Tambien esta pensado para que se pueda añadir url de imagenes
     
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -62,7 +61,7 @@ function handleImagenSeleccionada(event, index) {
   }
 }
 
-// Reemplaza la función convertirImagenABase64 con esta versión que incluye compresión
+// convertir la imagen en base 64
 function convertirImagenABase64(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
@@ -84,19 +83,19 @@ function convertirImagenABase64(file) {
         return
       }
       
-      // Para JPG y PNG, aplicamos compresión
+    
       const reader = new FileReader()
       reader.onload = function(e) {
         const img = new Image()
         img.onload = function() {
-          // Creamos un canvas para la compresión
+          
           const canvas = document.createElement('canvas')
           
-          // Calculamos dimensiones manteniendo la proporción
+          
           let width = img.width
           let height = img.height
           
-          // Si la imagen es muy grande, la redimensionamos
+        
           const MAX_WIDTH = 1600
           const MAX_HEIGHT = 1600
           
@@ -112,16 +111,15 @@ function convertirImagenABase64(file) {
             }
           }
           
-          // Establecemos las dimensiones del canvas
+       
           canvas.width = width
           canvas.height = height
           
-          // Dibujamos la imagen en el canvas con las nuevas dimensiones
+        
           const ctx = canvas.getContext('2d')
           ctx.drawImage(img, 0, 0, width, height)
           
-          // Convertimos el canvas a base64 con compresión
-          // Para JPG usamos calidad 0.7, para PNG usamos 0.8
+         
           const quality = file.type === 'image/png' ? 0.8 : 0.7
           const dataUrl = canvas.toDataURL(file.type, quality)
           
@@ -520,7 +518,7 @@ function eliminar_inmueble(id) {
 
 
 <style>
-/* Base Styles */
+
 :root {
   --primary: #2563eb;
   --primary-dark: #1d4ed8;
@@ -554,7 +552,7 @@ body {
   box-shadow: var(--shadow);
 }
 
-/* Typography */
+
 h1, h2, h3, h4 {
   color: #0f172a;
   font-weight: 600;
@@ -598,7 +596,7 @@ h4 {
   margin-bottom: 0.5rem;
 }
 
-/* User Info */
+
 .user-info {
   text-align: center;
   padding: 0.75rem;
@@ -606,7 +604,7 @@ h4 {
   border-radius: var(--radius-sm);
 }
 
-/* Form Controls */
+
 .input-group {
   margin-bottom: 1.25rem;
 }
@@ -647,7 +645,7 @@ input[type="file"] {
   padding: 0.5rem 0;
 }
 
-/* Buttons */
+
 button {
   cursor: pointer;
   font-weight: 500;
@@ -742,7 +740,7 @@ button {
   font-size: 0.875rem;
 }
 
-/* Card Sections */
+
 .card-section {
   background-color: var(--neutral-light);
   border-radius: var(--radius);
@@ -769,7 +767,6 @@ button {
   font-size: 0.875rem;
 }
 
-/* Image Upload */
 .imagen-upload h3 {
   margin-top: 0;
 }
@@ -880,7 +877,7 @@ button {
   font-size: 0.75rem;
 }
 
-/* Status Messages */
+
 .mensaje-guardar {
   text-align: center;
   padding: 1rem;
@@ -907,7 +904,6 @@ button {
   margin: 0.5rem 0;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
   .container {
     padding: 1rem;
@@ -936,7 +932,7 @@ button {
   }
 }
 
-/* Animation */
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -946,7 +942,6 @@ button {
   animation: fadeIn 0.3s ease-out;
 }
 
-/* Make it stand out more */
 button:active {
   transform: scale(0.98);
 }
