@@ -181,7 +181,7 @@ async function nuevo_inmueble() {
     const imagen = imagenes.value[i];
 
     if (imagen.file) {
-      const storageReference = storageRef(storage, `inmuebles/<span class="math-inline">\{currentUser\.value\.uid\}/</span>{Date.now()}-${imagen.file.name}`);
+      const storageReference = storageRef(storage, `inmuebles/${currentUser.value.uid}/${Date.now()}-${imagen.file.name}`);
       const uploadTask = uploadBytesResumable(storageReference, imagen.file);
 
       const uploadPromise = new Promise((resolve, reject) => {
